@@ -1,0 +1,10 @@
+{
+  "name": "拾词 - 高中英语抗遗忘",
+  "short_name": "拾词",
+  "description": "每天跟读一点，把高中 3500 词真正记住。",
+  "start_url": "/study",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#173d85",
+  "lang": "zh-CN"
+}

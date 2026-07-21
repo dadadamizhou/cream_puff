@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, count, desc, eq, gt, gte, lt, lte, notExists, sql } from "drizzle-orm";
 import { database } from "@/db";
-import { dailyCheckins, dailyCheckinWords, reviewLogs, userWords, words } from "@/db/schema";
+import { dailyCheckins, dailyCheckinWords, reviewLogs, userWords, wordBookEntries, words } from "@/db/schema";
 import type { Rating } from "@/lib/scheduler";
 import { resolveReviewSchedule } from "@/lib/review-scheduling";
 import { normalizeWordBooks, type WordBookId } from "@/lib/word-books";
@@ -66,8 +66,9 @@ export async function ensureTodayAssignments(userId: string, weeklyGoal: number,
       const candidates = await tx
         .select({ id: words.id })
         .from(words)
+        .innerJoin(wordBookEntries, eq(wordBookEntries.wordId, words.id))
         .where(and(
-          eq(words.wordBook, wordBook),
+          eq(wordBookEntries.wordBook, wordBook),
           sql`NOT EXISTS (SELECT 1 FROM user_words WHERE user_words.word_id = ${words.id} AND user_words.user_id = ${userId})`,
         ))
         .orderBy(sql`random()`)
@@ -257,8 +258,9 @@ export async function getOptionalStudy(args: {
       const candidates = await tx
         .select({ id: words.id })
         .from(words)
+        .innerJoin(wordBookEntries, eq(wordBookEntries.wordId, words.id))
         .where(and(
-          eq(words.wordBook, wordBook),
+          eq(wordBookEntries.wordBook, wordBook),
           sql`NOT EXISTS (SELECT 1 FROM user_words WHERE user_words.word_id = ${words.id} AND user_words.user_id = ${args.userId})`,
         ))
         .orderBy(sql`random()`)

@@ -8,10 +8,10 @@ export const WORD_BOOKS: ReadonlyArray<{
   shortLabel: string;
   description: string;
 }> = [
-  { id: "grade1", label: "高一基础", shortLabel: "高一", description: "优先学习最常用的高中核心词" },
+  { id: "grade1", label: "高一基础", shortLabel: "高一", description: "高中 3500 词中最常用的一层" },
   { id: "grade2", label: "高二进阶", shortLabel: "高二", description: "在基础词之上扩展阅读和表达" },
-  { id: "grade3", label: "高三冲刺", shortLabel: "高三", description: "覆盖高考范围内的低频与难词" },
-  { id: "cet4", label: "四级拓展", shortLabel: "四级", description: "高中词汇完成后的大学英语拓展" },
+  { id: "grade3", label: "高三冲刺", shortLabel: "高三", description: "高中 3500 词中的进阶与难词" },
+  { id: "cet4", label: "四级拓展", shortLabel: "四级", description: "完整四级成员，含与高中词重叠的词" },
 ] as const;
 
 const WORD_BOOK_SET = new Set<string>(WORD_BOOK_IDS);

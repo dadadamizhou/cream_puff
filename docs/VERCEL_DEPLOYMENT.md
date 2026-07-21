@@ -43,7 +43,7 @@ npm run db:seed
 
 ## 4. 上线前检查
 
-- 执行 `0004_word_books` 迁移后重新运行 `npm run db:seed`，确认 `words` 表包含高一、高二、高三和四级拓展四类真实词汇。
+- 执行最新迁移（包含 `0004_word_books` 和 `0006_word_book_entries`）后重新运行 `npm run db:seed`，确认高中主词库正好 3500 条，并且 `word_book_entries` 包含完整四级成员关系。
 - 注册两个测试账号，确认学习记录彼此隔离。
 - 在手机 Safari 和 Chrome 验证发音；语音识别需要 HTTPS 和麦克风权限，部分 iOS 浏览器可能只支持发音。
 - 免费 Neon 项目可能自动休眠，首次请求会有冷启动延迟；前端已经提供加载状态。

@@ -2,10 +2,11 @@ import "server-only";
 
 import { and, asc, count, eq, gt, gte, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { database } from "@/db";
-import { reviewLogs, userWords, words } from "@/db/schema";
+import { reviewLogs, userWords, wordBookEntries, words } from "@/db/schema";
 import type { WordLibraryData } from "@/types/word-library";
 import type { WordLibraryQuery } from "@/lib/validation/words";
 import { escapeLikePattern, getShanghaiDayRange, getShanghaiWeekStart, getWordProgressStatus } from "@/lib/word-library-logic";
+import { WORD_BOOK_IDS, type WordBookId } from "@/lib/word-books";
 
 function getStatusCondition(status: WordLibraryQuery["status"]): SQL | undefined {
   switch (status) {
@@ -48,7 +49,11 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
     ? or(ilike(words.spelling, searchPattern), ilike(words.definition, searchPattern))
     : undefined;
   const scopeCondition = getScopeCondition(userId, query, currentWeek);
-  const bookCondition = query.book === "all" ? undefined : eq(words.wordBook, query.book);
+  const bookWordIds = query.book === "all" ? undefined : database
+    .select({ wordId: wordBookEntries.wordId })
+    .from(wordBookEntries)
+    .where(eq(wordBookEntries.wordBook, query.book));
+  const bookCondition = bookWordIds ? inArray(words.id, bookWordIds) : undefined;
   const listCondition = and(searchCondition, bookCondition, scopeCondition, getStatusCondition(query.status));
 
   const [summaryRows, totalRows, itemRows] = await Promise.all([
@@ -91,6 +96,16 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
 
   const summary = summaryRows[0];
   const total = Number(totalRows[0]?.value ?? 0);
+  const membershipRows = itemRows.length ? await database
+    .select({ wordId: wordBookEntries.wordId, wordBook: wordBookEntries.wordBook })
+    .from(wordBookEntries)
+    .where(inArray(wordBookEntries.wordId, itemRows.map((item) => item.id))) : [];
+  const memberships = new Map<number, WordBookId[]>();
+  for (const membership of membershipRows) {
+    const values = memberships.get(membership.wordId) ?? [];
+    values.push(membership.wordBook);
+    memberships.set(membership.wordId, values);
+  }
 
   return {
     summary: {
@@ -107,6 +122,7 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
       phonetic: item.phonetic,
       definition: item.definition,
       wordBook: item.wordBook,
+      wordBooks: WORD_BOOK_IDS.filter((wordBook) => memberships.get(item.id)?.includes(wordBook)),
       stage: item.stage,
       reviewCount: item.reviewCount ?? 0,
       assignedWeek: item.assignedWeek,

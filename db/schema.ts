@@ -41,6 +41,22 @@ export const words = pgTable("words", {
   index("words_book_position_idx").on(table.wordBook, table.position),
 ]);
 
+export const wordBookEntries = pgTable(
+  "word_book_entries",
+  {
+    id: serial("id").primaryKey(),
+    wordId: integer("word_id")
+      .notNull()
+      .references(() => words.id, { onDelete: "cascade" }),
+    wordBook: text("word_book", { enum: ["grade1", "grade2", "grade3", "cet4"] }).notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    uniqueIndex("word_book_entries_word_book_idx").on(table.wordId, table.wordBook),
+    index("word_book_entries_book_position_idx").on(table.wordBook, table.position),
+  ],
+);
+
 export const userWords = pgTable(
   "user_words",
   {
@@ -179,6 +195,7 @@ export const practiceQuestions = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type Word = typeof words.$inferSelect;
+export type WordBookEntry = typeof wordBookEntries.$inferSelect;
 export type UserWord = typeof userWords.$inferSelect;
 export type DailyCheckinWord = typeof dailyCheckinWords.$inferSelect;
 export type DailyPracticeSession = typeof dailyPracticeSessions.$inferSelect;

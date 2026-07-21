@@ -10,6 +10,7 @@ export type WordLibraryItem = {
   phonetic: string;
   definition: string;
   wordBook: WordBookId;
+  wordBooks: WordBookId[];
   stage: number | null;
   reviewCount: number;
   assignedWeek: string | null;

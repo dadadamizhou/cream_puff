@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BookMarked, Check, LoaderCircle, Minus, Moon, Plus, Sun, Target } from "lucide-react";
+import { BookMarked, Check, LoaderCircle, MapPin, Minus, Moon, Plus, Sun, Target } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import useSWR from "swr";
@@ -88,6 +88,7 @@ export default function SettingsPage() {
 
         <section className="mt-5 rounded-2xl border border-line bg-card p-5">
           <div className="flex items-start gap-3"><div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"><BookMarked className="size-5" /></div><div><h2 className="font-bold">学习词库</h2><p className="mt-1 text-xs leading-5 text-muted">按高一、高二、高三、四级的顺序推进；同一级每天随机抽词。</p></div></div>
+          <div className="mt-4 flex items-center gap-3 rounded-xl bg-background px-3 py-3"><MapPin className="size-4 shrink-0 text-brand" /><div><p className="text-xs font-bold">黑龙江哈尔滨 · 高中 3500 兼容模式</p><p className="mt-1 text-[11px] leading-4 text-muted">暂无学校教材版本时，采用全国高中词汇范围，不虚构课本单元。</p></div></div>
           <div className="mt-5 space-y-2">{WORD_BOOKS.map((book, index) => { const selected = enabledWordBooks.includes(book.id); return <button key={book.id} type="button" onClick={() => toggleWordBook(book.id)} className={cn("flex min-h-16 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition", selected ? "border-brand bg-brand-soft" : "border-line bg-background")}><span className={cn("grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold", selected ? "bg-brand text-white" : "bg-line text-muted")}>{index + 1}</span><span className="min-w-0 flex-1"><span className={cn("block text-sm font-bold", selected && "text-brand")}>{book.label}</span><span className="mt-0.5 block text-[11px] leading-4 text-muted">{book.description}</span></span><span className={cn("grid size-6 shrink-0 place-items-center rounded-full border", selected ? "border-brand bg-brand text-white" : "border-line text-transparent")}><Check className="size-3.5" /></span></button>; })}</div>
           {form.formState.errors.enabledWordBooks && <p className="mt-2 text-xs text-red-500">{form.formState.errors.enabledWordBooks.message}</p>}
         </section>
@@ -106,7 +107,7 @@ export default function SettingsPage() {
 
       <section className="mt-5 rounded-2xl border border-line bg-card p-5">
         <h2 className="font-bold">关于泡芙</h2>
-        <div className="mt-4 flex items-center justify-between text-sm"><span className="text-muted">词库</span><span className="font-semibold">高中分级 + 四级拓展</span></div>
+        <div className="mt-4 flex items-center justify-between text-sm"><span className="text-muted">词库</span><span className="font-semibold">高中 3500 + 四级拓展</span></div>
         <div className="mt-3 flex items-center justify-between text-sm"><span className="text-muted">复习模型</span><span className="font-semibold">间隔复习 v1</span></div>
         <p className="mt-5 text-xs leading-5 text-muted">每周目标会平滑分配到每天；泡芙再根据你的反馈安排到期复习。</p>
       </section>

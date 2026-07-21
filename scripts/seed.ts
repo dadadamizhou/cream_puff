@@ -1,7 +1,7 @@
 import { loadEnvFile } from "node:process";
-import { notInArray, sql } from "drizzle-orm";
-import { words } from "../db/schema";
-import { classifyDictionaryWords, type ClassifiedDictionaryWord } from "../lib/word-book-classification";
+import { inArray, notInArray, sql } from "drizzle-orm";
+import { wordBookEntries, words } from "../db/schema";
+import { classifyDictionaryWords, MAX_HIGH_SCHOOL_WORDS, type ClassifiedDictionaryWord } from "../lib/word-book-classification";
 
 try {
   loadEnvFile(".env");
@@ -46,7 +46,7 @@ async function loadWords(): Promise<ClassifiedDictionaryWord<SeedWord>[]> {
     }
     const classified = classifyDictionaryWords(parsed);
     const highSchoolCount = classified.filter((word) => word.wordBook !== "cet4").length;
-    if (highSchoolCount >= 3000 && classified.some((word) => word.wordBook === "cet4")) return classified;
+    if (highSchoolCount === MAX_HIGH_SCHOOL_WORDS && classified.some((word) => word.wordBook === "cet4")) return classified;
     throw new Error(`可用高中词汇只有 ${highSchoolCount} 条，或缺少四级拓展词，已停止导入`);
   } catch (error) {
     throw new Error(`无法取得真实高中词表，数据库未改动：${error instanceof Error ? error.message : "未知错误"}`);
@@ -102,13 +102,29 @@ async function main() {
           },
         });
     }
+
+    await tx.delete(wordBookEntries);
+    for (let start = 0; start < seedWords.length; start += 250) {
+      const batch = seedWords.slice(start, start + 250);
+      const storedWords = await tx
+        .select({ id: words.id, spelling: words.spelling })
+        .from(words)
+        .where(inArray(words.spelling, batch.map((word) => word.spelling)));
+      const ids = new Map(storedWords.map((word) => [word.spelling, word.id]));
+      const memberships = batch.flatMap((word) => word.wordBooks.map((wordBook) => ({
+        wordId: ids.get(word.spelling)!,
+        wordBook,
+        position: word.position,
+      })));
+      if (memberships.length) await tx.insert(wordBookEntries).values(memberships);
+    }
   });
 
   const counts = seedWords.reduce<Record<string, number>>((result, word) => {
-    result[word.wordBook] = (result[word.wordBook] ?? 0) + 1;
+    for (const wordBook of word.wordBooks) result[wordBook] = (result[wordBook] ?? 0) + 1;
     return result;
   }, {});
-  console.log(`分级词库同步完成：高一 ${counts.grade1 ?? 0}，高二 ${counts.grade2 ?? 0}，高三 ${counts.grade3 ?? 0}，四级拓展 ${counts.cet4 ?? 0}。`);
+  console.log(`分级词库同步完成：高一 ${counts.grade1 ?? 0}，高二 ${counts.grade2 ?? 0}，高三 ${counts.grade3 ?? 0}，完整四级 ${counts.cet4 ?? 0}。`);
 }
 
 main().catch((error) => {

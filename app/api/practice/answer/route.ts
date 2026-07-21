@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { answerPracticeQuestion } from "@/lib/practice";
+import { describePracticeError } from "@/lib/practice-errors";
 import { practiceAnswerSchema } from "@/lib/validation/practice";
 
 export async function POST(request: Request) {
@@ -13,12 +14,11 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json(await answerPracticeQuestion({ userId: user.id, ...parsed.data }));
   } catch (error) {
-    if (error instanceof Error && error.message === "QUESTION_NOT_FOUND") {
-      return NextResponse.json({ message: "题目不存在" }, { status: 404 });
-    }
-    if (error instanceof Error && error.message === "QUESTION_ALREADY_ANSWERED") {
-      return NextResponse.json({ message: "这道题已经作答" }, { status: 409 });
-    }
-    return NextResponse.json({ message: "暂时无法提交答案，请稍后再试" }, { status: 500 });
+    const details = describePracticeError(error);
+    if (details.status >= 500) console.error("[practice/answer]", error);
+    return NextResponse.json(
+      { code: details.code, message: details.message, action: details.action },
+      { status: details.status },
+    );
   }
 }

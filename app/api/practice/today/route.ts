@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { describePracticeError } from "@/lib/practice-errors";
 import { getTodayPractice } from "@/lib/practice";
 
 export async function GET() {
@@ -9,9 +10,11 @@ export async function GET() {
   try {
     return NextResponse.json(await getTodayPractice(user.id));
   } catch (error) {
-    if (error instanceof Error && error.message === "NO_WORDS_AVAILABLE") {
-      return NextResponse.json({ message: "请先完成几个今日学习单词，再来参加练习" }, { status: 409 });
-    }
-    return NextResponse.json({ message: "暂时无法生成每日一练，请稍后再试" }, { status: 500 });
+    const details = describePracticeError(error);
+    if (details.status >= 500) console.error("[practice/today]", error);
+    return NextResponse.json(
+      { code: details.code, message: details.message, action: details.action },
+      { status: details.status },
+    );
   }
 }

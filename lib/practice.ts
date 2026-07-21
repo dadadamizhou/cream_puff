@@ -3,23 +3,20 @@ import "server-only";
 import { and, asc, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { database } from "@/db";
 import { dailyPracticeSessions, practiceQuestions, userWords, words } from "@/db/schema";
+import {
+  createPracticePlan,
+  DAILY_PRACTICE_QUESTION_COUNT,
+  normalizePracticeAnswer,
+  summarizePracticeQuestions,
+} from "@/lib/practice-logic";
 import type {
   PracticeAnswerData,
   PracticeQuestion,
-  PracticeSummary,
   PracticeType,
   PracticeTodayData,
 } from "@/types/practice";
 
-const DAILY_QUESTION_COUNT = 15;
 const RETRY_DELAY_MS = 10 * 60 * 1000;
-const PRACTICE_TYPES: PracticeType[] = [
-  "meaning_to_word",
-  "word_to_meaning",
-  "listening_choice",
-  "listening_dictation",
-  "translation_dictation",
-];
 
 type PracticeQuestionRow = {
   id: number;
@@ -45,10 +42,6 @@ function dateKey(date = new Date()) {
   }).format(date);
 }
 
-function normalizeAnswer(value: string) {
-  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
-}
-
 function shuffle<T>(values: T[]) {
   const copy = [...values];
   for (let index = copy.length - 1; index > 0; index -= 1) {
@@ -59,9 +52,9 @@ function shuffle<T>(values: T[]) {
 }
 
 function buildOptions(correctAnswer: string, alternatives: string[]) {
-  const normalizedCorrect = normalizeAnswer(correctAnswer);
+  const normalizedCorrect = normalizePracticeAnswer(correctAnswer);
   const uniqueAlternatives = Array.from(
-    new Set(alternatives.filter((value) => value && normalizeAnswer(value) !== normalizedCorrect)),
+    new Set(alternatives.filter((value) => value && normalizePracticeAnswer(value) !== normalizedCorrect)),
   );
   return shuffle([correctAnswer, ...shuffle(uniqueAlternatives).slice(0, 3)]);
 }
@@ -86,21 +79,6 @@ function toPublicQuestion(row: PracticeQuestionRow): PracticeQuestion {
           example: row.example,
         }
       : null,
-  };
-}
-
-function summarizeQuestions(questions: Array<{ selectedAnswer: string | null; isCorrect: boolean | null }>): PracticeSummary {
-  const total = questions.length;
-  const answered = questions.filter((question) => question.selectedAnswer !== null).length;
-  const correct = questions.filter((question) => question.isCorrect === true).length;
-  return {
-    total,
-    answered,
-    correct,
-    incorrect: answered - correct,
-    remaining: total - answered,
-    accuracy: answered === 0 ? 0 : Math.round((correct / answered) * 100),
-    completed: total > 0 && answered === total,
   };
 }
 
@@ -131,7 +109,7 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
     .select({ value: count() })
     .from(practiceQuestions)
     .where(and(eq(practiceQuestions.sessionId, sessionId), eq(practiceQuestions.userId, userId)));
-  if (Number(existing?.value ?? 0) >= DAILY_QUESTION_COUNT) return;
+  if (Number(existing?.value ?? 0) >= DAILY_PRACTICE_QUESTION_COUNT) return;
 
   const targets = await database
     .select({
@@ -143,7 +121,7 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
     .innerJoin(words, eq(userWords.wordId, words.id))
     .where(and(eq(userWords.userId, userId), gt(userWords.reviewCount, 0)))
     .orderBy(desc(userWords.lapseCount), asc(userWords.nextReviewAt), asc(words.position))
-    .limit(DAILY_QUESTION_COUNT);
+    .limit(DAILY_PRACTICE_QUESTION_COUNT);
 
   if (targets.length === 0) throw new Error("NO_WORDS_AVAILABLE");
 
@@ -157,9 +135,7 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
   const now = new Date();
   const generated: (typeof practiceQuestions.$inferInsert)[] = [];
 
-  for (let position = 0; position < DAILY_QUESTION_COUNT; position += 1) {
-    const target = targets[position % targets.length];
-    const type = PRACTICE_TYPES[position % PRACTICE_TYPES.length];
+  for (const { position, target, type } of createPracticePlan(targets)) {
     const base = {
       sessionId,
       userId,
@@ -239,7 +215,7 @@ export async function getTodayPractice(userId: string): Promise<PracticeTodayDat
         userId,
         date: today,
         status: "in_progress",
-        questionCount: DAILY_QUESTION_COUNT,
+        questionCount: DAILY_PRACTICE_QUESTION_COUNT,
         answeredCount: 0,
         correctCount: 0,
         startedAt: now,
@@ -261,7 +237,7 @@ export async function getTodayPractice(userId: string): Promise<PracticeTodayDat
   await ensurePracticeQuestions(session.id, userId);
   const rows = await loadQuestions(session.id, userId);
   const questions = rows.map(toPublicQuestion);
-  const summary = summarizeQuestions(rows);
+  const summary = summarizePracticeQuestions(rows);
 
   return {
     practice: {
@@ -302,10 +278,17 @@ export async function answerPracticeQuestion(args: {
     .limit(1);
 
   if (!question) throw new Error("QUESTION_NOT_FOUND");
-  if (question.selectedAnswer !== null) throw new Error("QUESTION_ALREADY_ANSWERED");
+  if (question.selectedAnswer !== null) {
+    const rows = await loadQuestions(question.sessionId, args.userId);
+    return {
+      question: toPublicQuestion(question),
+      summary: summarizePracticeQuestions(rows),
+      scheduling: { affected: false, userWordId: null, stage: null, nextReviewAt: null },
+    };
+  }
 
   const answer = args.answer.trim();
-  const isCorrect = normalizeAnswer(answer) === normalizeAnswer(question.correctAnswer);
+  const isCorrect = normalizePracticeAnswer(answer) === normalizePracticeAnswer(question.correctAnswer);
   const now = new Date();
 
   const result = await database.transaction(async (tx) => {
@@ -320,7 +303,7 @@ export async function answerPracticeQuestion(args: {
         ),
       )
       .returning({ id: practiceQuestions.id });
-    if (!updated) throw new Error("QUESTION_ALREADY_ANSWERED");
+    if (!updated) return null;
 
     let scheduling: PracticeAnswerData["scheduling"] = {
       affected: false,
@@ -363,7 +346,7 @@ export async function answerPracticeQuestion(args: {
       .where(
         and(eq(practiceQuestions.sessionId, question.sessionId), eq(practiceQuestions.userId, args.userId)),
       );
-    const summary = summarizeQuestions(questionStates);
+    const summary = summarizePracticeQuestions(questionStates);
     await tx
       .update(dailyPracticeSessions)
       .set({
@@ -380,6 +363,37 @@ export async function answerPracticeQuestion(args: {
 
     return { summary, scheduling };
   });
+
+  if (!result) {
+    const [latest] = await database
+      .select({
+        id: practiceQuestions.id,
+        sessionId: practiceQuestions.sessionId,
+        wordId: practiceQuestions.wordId,
+        type: practiceQuestions.type,
+        prompt: practiceQuestions.prompt,
+        audioText: practiceQuestions.audioText,
+        options: practiceQuestions.options,
+        correctAnswer: practiceQuestions.correctAnswer,
+        selectedAnswer: practiceQuestions.selectedAnswer,
+        isCorrect: practiceQuestions.isCorrect,
+        spelling: words.spelling,
+        phonetic: words.phonetic,
+        definition: words.definition,
+        example: words.example,
+      })
+      .from(practiceQuestions)
+      .innerJoin(words, eq(practiceQuestions.wordId, words.id))
+      .where(and(eq(practiceQuestions.id, args.questionId), eq(practiceQuestions.userId, args.userId)))
+      .limit(1);
+    if (!latest || latest.selectedAnswer === null) throw new Error("QUESTION_NOT_FOUND");
+    const rows = await loadQuestions(latest.sessionId, args.userId);
+    return {
+      question: toPublicQuestion(latest),
+      summary: summarizePracticeQuestions(rows),
+      scheduling: { affected: false, userWordId: null, stage: null, nextReviewAt: null },
+    };
+  }
 
   return {
     question: toPublicQuestion({ ...question, selectedAnswer: answer, isCorrect }),

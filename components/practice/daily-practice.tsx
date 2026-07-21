@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { isAxiosError } from "axios";
 import { ArrowRight, Cat, Check, CheckCircle2, Dog, Headphones, Keyboard, LoaderCircle, PawPrint, RotateCcw, Sparkles, Volume2, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useWordAudio } from "@/hooks/use-word-audio";
 import { cn } from "@/lib/utils";
 import { usePracticeStore } from "@/store/practice";
-import type { PracticeAnswerData, PracticeQuestion, PracticeTodayData, PracticeType } from "@/types/practice";
+import type { PracticeAnswerData, PracticeApiError, PracticeQuestion, PracticeTodayData, PracticeType } from "@/types/practice";
 
 const fetcher = (url: string) => api.get<PracticeTodayData>(url).then((response) => response.data);
 
@@ -37,18 +39,6 @@ export function DailyPractice() {
   const shownQuestion = result?.id === question.id ? result : question;
   const answered = shownQuestion.answered;
   const isDictation = question.type === "listening_dictation" || question.type === "translation_dictation";
-
-  function speak() {
-    if (!question.audioText || !("speechSynthesis" in window)) {
-      toast.info("当前浏览器暂时无法播放发音");
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(question.audioText);
-    utterance.lang = "en-US";
-    utterance.rate = 0.78;
-    window.speechSynthesis.speak(utterance);
-  }
 
   async function submitAnswer() {
     const answer = selectedAnswer.trim();
@@ -98,7 +88,7 @@ export function DailyPractice() {
         <PawDecoration />
         <span className="relative inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1 text-[11px] font-bold text-brand"><MetaIcon className="size-3.5" />{meta.label}</span>
         {(question.type === "listening_choice" || question.type === "listening_dictation") ? (
-          <div className="relative mt-8"><button onClick={speak} aria-label="播放题目发音" className="mx-auto grid size-20 place-items-center rounded-full bg-brand text-white shadow-lg shadow-pink-200 transition active:scale-95"><Volume2 className="size-8" /></button><p className="mt-4 text-sm text-muted">点击可重复播放</p></div>
+          <PracticeAudioButton word={question.audioText ?? ""} />
         ) : (
           <div className="relative mt-9"><p className="text-xs font-semibold text-muted">{question.type === "translation_dictation" ? "请默写对应单词" : "请选择对应答案"}</p><h1 className="mx-auto mt-3 max-w-md text-2xl font-bold leading-9 tracking-normal">{question.prompt}</h1></div>
         )}
@@ -129,6 +119,11 @@ function AnswerFeedback({ question }: { question: PracticeQuestion }) {
   return <section className={cn("mt-4 rounded-2xl border p-4", question.isCorrect ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50")}><div className="flex items-center gap-2">{question.isCorrect ? <CheckCircle2 className="size-5 text-emerald-600" /> : <XCircle className="size-5 text-red-500" />}<p className={cn("font-bold", question.isCorrect ? "text-emerald-800" : "text-red-700")}>{question.isCorrect ? "答对啦" : "再记一次"}</p></div>{!question.isCorrect && <p className="mt-2 text-sm text-red-700">正确答案：<strong>{question.correctAnswer}</strong></p>}{question.explanation && <div className="mt-3 border-t border-black/5 pt-3"><div className="flex items-baseline gap-2"><strong>{question.explanation.spelling}</strong><span className="text-xs text-muted">{question.explanation.phonetic}</span></div><p className="mt-1 text-sm leading-6 text-foreground">{question.explanation.definition}</p>{question.explanation.example && <p className="mt-1 text-xs leading-5 text-muted">{question.explanation.example}</p>}</div>}</section>;
 }
 
+function PracticeAudioButton({ word }: { word: string }) {
+  const audio = useWordAudio(word);
+  return <div className="relative mt-8"><button type="button" onClick={audio.play} aria-label="播放题目发音" aria-busy={audio.isLoading} className={cn("mx-auto grid size-20 place-items-center rounded-full bg-brand text-white shadow-lg shadow-pink-200 transition active:scale-95", audio.isPlaying && "ring-4 ring-brand-soft")}>{audio.isLoading ? <LoaderCircle className="size-7 animate-spin" /> : <Volume2 className={cn("size-8", audio.isPlaying && "animate-pulse")} />}</button><p className={cn("mt-4 text-sm", audio.status === "error" ? "text-red-600" : audio.status === "needs-interaction" ? "font-semibold text-brand" : "text-muted")}>{audio.message}</p></div>;
+}
+
 function CompleteState({ data }: { data: PracticeTodayData }) {
   const wrongQuestions = data.questions.filter((question) => question.isCorrect === false);
   return <div className="grid min-h-[70vh] place-items-center py-6 text-center"><div className="w-full max-w-sm"><div className="relative mx-auto grid size-24 place-items-center rounded-full bg-brand-soft text-brand"><Dog className="size-11" /><span className="absolute -right-1 top-0 grid size-8 place-items-center rounded-full bg-emerald-500 text-white"><Check className="size-4" /></span></div><p className="mt-6 text-sm text-muted">今日练习完成</p><h1 className="mt-1 text-3xl font-bold">正确率 {data.summary.accuracy}%</h1><div className="mt-6 grid grid-cols-3 divide-x divide-line rounded-2xl border border-line bg-card py-4"><ResultStat value={data.summary.correct} label="答对" /><ResultStat value={data.summary.incorrect} label="待巩固" /><ResultStat value={data.summary.total} label="总题数" /></div>{wrongQuestions.length > 0 && <div className="mt-4 rounded-2xl border border-line bg-card p-4 text-left"><div className="flex items-center gap-2 text-sm font-bold"><RotateCcw className="size-4 text-brand" />今日错词</div><div className="mt-3 flex flex-wrap gap-2">{wrongQuestions.map((question) => <span key={question.id} className="rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">{question.explanation?.spelling ?? question.correctAnswer}</span>)}</div><p className="mt-3 text-[11px] text-muted">已安排 10 分钟后再次复习</p></div>}<Link href="/study" className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand font-bold text-white"><PawPrint className="size-4" />返回今日学习</Link></div></div>;
@@ -137,4 +132,15 @@ function CompleteState({ data }: { data: PracticeTodayData }) {
 function PawDecoration({ light = false }: { light?: boolean }) { return <><PawPrint className={cn("absolute -right-3 -top-3 size-20 rotate-12", light ? "text-white/10" : "text-brand/5")} /><PawPrint className={cn("absolute -bottom-5 left-2 size-14 -rotate-12", light ? "text-white/10" : "text-brand/5")} /></>; }
 function ResultStat({ value, label }: { value: number; label: string }) { return <div><strong className="text-xl">{value}</strong><span className="mt-1 block text-[11px] text-muted">{label}</span></div>; }
 function LoadingState() { return <div className="grid min-h-[60vh] place-items-center"><LoaderCircle className="size-7 animate-spin text-brand" /></div>; }
-function UnavailableState({ error, onRetry }: { error: unknown; onRetry: () => void }) { const status = (error as { response?: { status?: number } })?.response?.status; return <div className="grid min-h-[65vh] place-items-center text-center"><div className="max-w-xs"><div className="mx-auto grid size-16 place-items-center rounded-full bg-brand-soft text-brand"><Cat className="size-8" /></div><h1 className="mt-5 text-xl font-bold">{status === 409 ? "先学几个单词吧" : "练习暂时没有准备好"}</h1><p className="mt-2 text-sm leading-6 text-muted">{status === 409 ? "完成今日学习后，泡芙会从学过的词里生成练习。" : "稍后重试，已经完成的题目不会丢失。"}</p><button onClick={onRetry} className="mt-6 h-11 rounded-2xl bg-brand px-6 text-sm font-bold text-white">重新加载</button></div></div>; }
+function UnavailableState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const response = isAxiosError<PracticeApiError>(error) ? error.response : undefined;
+  const details = response?.data;
+  const needsStudy = details?.code === "NO_LEARNED_WORDS" || response?.status === 409;
+  const needsLogin = response?.status === 401;
+  const title = needsStudy ? "先学会一个单词吧" : needsLogin ? "登录状态已失效" : details?.message ?? "每日一练加载失败";
+  const action = needsLogin
+    ? "请重新登录后继续练习。"
+    : details?.action ?? "请检查网络后重新加载，已经完成的题目不会丢失。";
+
+  return <div className="grid min-h-[65vh] place-items-center text-center"><div className="max-w-xs"><div className="mx-auto grid size-16 place-items-center rounded-full bg-brand-soft text-brand"><Cat className="size-8" /></div><h1 className="mt-5 text-xl font-bold">{title}</h1><p className="mt-2 text-sm leading-6 text-muted">{action}</p>{needsStudy || needsLogin ? <Link href={needsStudy ? "/study" : "/login"} className="mt-6 inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-6 text-sm font-bold text-white">{needsStudy ? "去完成今日学习" : "重新登录"}</Link> : <button onClick={onRetry} className="mt-6 h-11 rounded-2xl bg-brand px-6 text-sm font-bold text-white">重新加载</button>}</div></div>;
+}

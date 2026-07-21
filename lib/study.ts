@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, gt, gte, lte, sql } from "drizzle-orm";
 import { database } from "@/db";
 import { dailyCheckins, reviewLogs, userWords, words } from "@/db/schema";
 import { getNextReviewAt, getNextStage, STAGES, type Rating } from "@/lib/scheduler";
@@ -109,7 +109,11 @@ export async function getTodayData(userId: string, weeklyGoal: number) {
     checkin = { ...checkin, targetCount, fullyCompleted };
   }
   const [weekStats] = await database
-    .select({ assigned: count(userWords.id), mastered: sql<number>`sum(case when ${userWords.masteredAt} is not null then 1 else 0 end)` })
+    .select({
+      scheduled: count(userWords.id),
+      learned: sql<number>`sum(case when ${userWords.reviewCount} > 0 then 1 else 0 end)`,
+      mastered: sql<number>`sum(case when ${userWords.masteredAt} is not null then 1 else 0 end)`,
+    })
     .from(userWords)
     .where(and(eq(userWords.userId, userId), eq(userWords.assignedWeek, currentWeek)));
 
@@ -126,10 +130,13 @@ export async function getTodayData(userId: string, weeklyGoal: number) {
   const stageCounts = await database
     .select({ stage: userWords.stage, count: count(userWords.id) })
     .from(userWords)
-    .where(eq(userWords.userId, userId))
+    .where(and(eq(userWords.userId, userId), gt(userWords.reviewCount, 0)))
     .groupBy(userWords.stage);
   const [overall] = await database
-    .select({ learned: count(userWords.id), mastered: sql<number>`sum(case when ${userWords.masteredAt} is not null then 1 else 0 end)` })
+    .select({
+      learned: sql<number>`sum(case when ${userWords.reviewCount} > 0 then 1 else 0 end)`,
+      mastered: sql<number>`sum(case when ${userWords.masteredAt} is not null then 1 else 0 end)`,
+    })
     .from(userWords)
     .where(eq(userWords.userId, userId));
 
@@ -139,7 +146,12 @@ export async function getTodayData(userId: string, weeklyGoal: number) {
     tasks: taskRows,
     checkin: checkin ?? { completedCount: 0, targetCount, fullyCompleted: false },
     plan: { weeklyGoal, dailyAverage: Math.ceil(weeklyGoal / 7) },
-    week: { assigned: Number(weekStats?.assigned ?? 0), mastered: Number(weekStats?.mastered ?? 0), goal: weeklyGoal },
+    week: {
+      scheduled: Number(weekStats?.scheduled ?? 0),
+      learned: Number(weekStats?.learned ?? 0),
+      mastered: Number(weekStats?.mastered ?? 0),
+      goal: weeklyGoal,
+    },
     activeDays,
     streak: calculateStreak(recentCheckins.map((entry) => entry.date), now),
     stageCounts: stageCounts.map((entry) => ({ stage: entry.stage, count: Number(entry.count) })),

@@ -19,7 +19,7 @@ export type TodayData = {
   tasks: StudyTask[];
   checkin: { completedCount: number; targetCount: number; fullyCompleted: boolean };
   plan: { weeklyGoal: number; dailyAverage: number };
-  week: { assigned: number; mastered: number; goal: number };
+  week: { scheduled: number; learned: number; mastered: number; goal: number };
   activeDays: { date: string; fullyCompleted: boolean }[];
   streak: number;
   stageCounts: { stage: number; count: number }[];

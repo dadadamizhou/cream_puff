@@ -53,3 +53,9 @@ export type PracticeAnswerData = {
     nextReviewAt: string | null;
   };
 };
+
+export type PracticeApiError = {
+  code?: string;
+  message?: string;
+  action?: string;
+};

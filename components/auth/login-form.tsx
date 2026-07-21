@@ -10,7 +10,6 @@ import {
   CircleAlert,
   Eye,
   EyeOff,
-  Heart,
   LoaderCircle,
   LockKeyhole,
   Mail,
@@ -238,7 +237,7 @@ export function LoginForm() {
       <div className="mt-5 flex items-center justify-center gap-2 px-4 text-center text-xs leading-5 text-muted">
         <span className="relative grid size-7 shrink-0 place-items-center rounded-full bg-brand-soft text-brand" aria-hidden="true">
           <Cat className="size-4" />
-          <Heart className="absolute -right-0.5 -top-0.5 size-2.5 fill-current" />
+          <PawPrint className="absolute -right-0.5 -top-0.5 size-2.5 fill-current" />
         </span>
         <span>慢慢来，记牢比记快更重要。</span>
       </div>

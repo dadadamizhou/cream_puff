@@ -25,7 +25,8 @@ function isAutoplayBlocked(error: unknown) {
   return error instanceof DOMException && error.name === "NotAllowedError";
 }
 
-export function useWordAudio(word: string) {
+export function useWordAudio(word: string, options: { autoPlay?: boolean } = {}) {
+  const autoPlay = options.autoPlay ?? true;
   const [status, setStatus] = useState<WordAudioStatus>("idle");
   const [message, setMessage] = useState("进入单词时会自动播放发音");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -200,13 +201,14 @@ export function useWordAudio(word: string) {
 
   useEffect(() => {
     failedSourcesRef.current = new Set();
+    if (!autoPlay) return stopCurrent;
     const autoPlayTimer = window.setTimeout(() => play(false), 120);
 
     return () => {
       window.clearTimeout(autoPlayTimer);
       stopCurrent();
     };
-  }, [play, stopCurrent, word]);
+  }, [autoPlay, play, stopCurrent, word]);
 
   return {
     play: () => play(true),

@@ -29,6 +29,20 @@
       "when": 1784610000000,
       "tag": "0003_daily_practice",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784622000000,
+      "tag": "0004_word_books",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784628000000,
+      "tag": "0005_daily_checkin_words",
+      "breakpoints": true
     }
   ]
 }

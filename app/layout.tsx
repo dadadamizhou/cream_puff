@@ -4,7 +4,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "泡芙 | 高中英语抗遗忘",
-  description: "泡芙陪你每天跟读，把高中 3500 词真正记住。",
+  description: "泡芙陪你按年级随机学习，把高中与四级词汇真正记住。",
   manifest: "/manifest.webmanifest",
 };
 

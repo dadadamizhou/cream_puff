@@ -1,4 +1,4 @@
-import { Cat, Heart, Sparkles } from "lucide-react";
+import { Cat, PawPrint, Sparkles } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 
 export default function LoginPage() {
@@ -10,7 +10,7 @@ export default function LoginPage() {
             <span className="relative grid size-10 shrink-0 place-items-center rounded-2xl bg-brand text-white shadow-[0_8px_20px_color-mix(in_srgb,var(--brand)_28%,transparent)]">
               <Cat className="size-5" strokeWidth={2.3} aria-hidden="true" />
               <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full border-2 border-background bg-card text-brand">
-                <Heart className="size-2.5 fill-current" strokeWidth={2.5} aria-hidden="true" />
+                <PawPrint className="size-2.5 fill-current" strokeWidth={2.5} aria-hidden="true" />
               </span>
             </span>
             <span>

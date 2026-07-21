@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { and, eq, gt } from "drizzle-orm";
 import { database } from "@/db";
 import { sessions, users } from "@/db/schema";
+import { normalizeWordBooks } from "@/lib/word-books";
 
 const SESSION_COOKIE = "shi_ci_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 30;
@@ -55,13 +56,14 @@ export async function getCurrentUser() {
       email: users.email,
       nickname: users.nickname,
       weeklyGoal: users.weeklyGoal,
+      enabledWordBooks: users.enabledWordBooks,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
     .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
     .limit(1);
 
-  return result ?? null;
+  return result ? { ...result, enabledWordBooks: normalizeWordBooks(result.enabledWordBooks) } : null;
 }
 
 export async function requireUser() {

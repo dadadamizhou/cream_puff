@@ -21,13 +21,13 @@ npm run dev
 
 ```bash
 npm run db:migrate  # 执行版本化 PostgreSQL 迁移
-npm run db:seed     # 幂等导入 3500 词
+npm run db:seed     # 幂等导入高中分级与四级拓展词库
 npm run test        # 复习调度单元测试
 npm run typecheck   # TypeScript 类型检查
 npm run lint
 npm run build
 ```
 
-`db:seed` 从开源 ECDICT 词库筛选带 `gk`（高考）标签的 3500 条词汇，排除单字母基础词，并同步清理旧词和历史占位数据。下载或校验失败时脚本会停止，不会向生产库写入假词。
+`db:seed` 从开源 ECDICT 词库筛选 `gk`（高考）与 `cet4`（四级）标签。高中词按词频分成高一基础、高二进阶、高三冲刺，四级词库只保留高中范围之外的拓展词，避免重复。下载或校验失败时脚本会停止，不会向生产库写入假词。
 
 数据库使用 Neon PostgreSQL：应用请求连接 pooled 地址，迁移连接 unpooled 地址。部署步骤见 [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md)。业务表的所有学习查询都以当前会话的 `user_id` 为边界。

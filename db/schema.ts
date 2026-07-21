@@ -1,4 +1,5 @@
 import { boolean, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import type { WordBookId } from "@/lib/word-books";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -6,6 +7,7 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   nickname: text("nickname").notNull(),
   weeklyGoal: integer("weekly_goal").notNull().default(60),
+  enabledWordBooks: jsonb("enabled_word_books").$type<WordBookId[]>().notNull().default(["grade1", "grade2", "grade3", "cet4"]),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
 });
@@ -32,8 +34,12 @@ export const words = pgTable("words", {
   example: text("example").notNull().default(""),
   exampleTranslation: text("example_translation").notNull().default(""),
   memoryTip: text("memory_tip").notNull().default(""),
+  wordBook: text("word_book", { enum: ["grade1", "grade2", "grade3", "cet4"] }).notNull().default("grade1"),
   position: integer("position").notNull(),
-}, (table) => [index("words_position_idx").on(table.position)]);
+}, (table) => [
+  index("words_position_idx").on(table.position),
+  index("words_book_position_idx").on(table.wordBook, table.position),
+]);
 
 export const userWords = pgTable(
   "user_words",
@@ -90,6 +96,25 @@ export const dailyCheckins = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (table) => [uniqueIndex("daily_checkins_user_date_idx").on(table.userId, table.date)],
+);
+
+export const dailyCheckinWords = pgTable(
+  "daily_checkin_words",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    wordId: integer("word_id")
+      .notNull()
+      .references(() => words.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_checkin_words_user_date_word_idx").on(table.userId, table.date, table.wordId),
+    index("daily_checkin_words_user_date_idx").on(table.userId, table.date),
+  ],
 );
 
 export const dailyPracticeSessions = pgTable(
@@ -155,5 +180,6 @@ export const practiceQuestions = pgTable(
 export type User = typeof users.$inferSelect;
 export type Word = typeof words.$inferSelect;
 export type UserWord = typeof userWords.$inferSelect;
+export type DailyCheckinWord = typeof dailyCheckinWords.$inferSelect;
 export type DailyPracticeSession = typeof dailyPracticeSessions.$inferSelect;
 export type PracticeQuestion = typeof practiceQuestions.$inferSelect;

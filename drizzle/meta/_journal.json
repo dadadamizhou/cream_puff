@@ -8,6 +8,27 @@
       "when": 1784598000000,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784603100000,
+      "tag": "0001_daily_new_words",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784604900000,
+      "tag": "0002_restore_weekly_goal",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784610000000,
+      "tag": "0003_daily_practice",
+      "breakpoints": true
     }
   ]
 }

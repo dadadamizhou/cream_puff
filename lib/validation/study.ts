@@ -8,5 +8,7 @@ export const reviewSchema = z.object({
 });
 
 export const settingsSchema = z.object({
-  weeklyGoal: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+  weeklyGoal: z.number().int("请输入整数").min(20, "每周至少 20 个").max(350, "每周最多 350 个"),
 });
+
+export type SettingsInput = z.infer<typeof settingsSchema>;

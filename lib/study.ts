@@ -23,15 +23,16 @@ function dayStart(date = new Date()) {
 }
 
 function weekStart(date = new Date()) {
-  const start = dayStart(date);
-  const weekday = start.getDay() || 7;
-  start.setDate(start.getDate() - weekday + 1);
-  return dateKey(start);
+  const [year, month, day] = dateKey(date).split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day));
+  const weekday = start.getUTCDay() || 7;
+  start.setUTCDate(start.getUTCDate() - weekday + 1);
+  return start.toISOString().slice(0, 10);
 }
 
 function daysSinceMonday(date = new Date()) {
-  const start = dayStart(date);
-  const weekday = start.getDay() || 7;
+  const [year, month, day] = dateKey(date).split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay() || 7;
   return weekday - 1;
 }
 
@@ -99,12 +100,13 @@ export async function getTodayData(userId: string, weeklyGoal: number) {
 
   let [checkin] = await database.select().from(dailyCheckins).where(and(eq(dailyCheckins.userId, userId), eq(dailyCheckins.date, today))).limit(1);
   const targetCount = Math.max(checkin?.targetCount ?? 0, taskRows.length + (checkin?.completedCount ?? 0));
-  if (!checkin) {
+  if (!checkin && targetCount > 0) {
     await database.insert(dailyCheckins).values({ userId, date: today, completedCount: 0, targetCount, fullyCompleted: targetCount === 0, updatedAt: now });
     [checkin] = await database.select().from(dailyCheckins).where(and(eq(dailyCheckins.userId, userId), eq(dailyCheckins.date, today))).limit(1);
   } else if (targetCount > checkin.targetCount) {
-    await database.update(dailyCheckins).set({ targetCount, updatedAt: now }).where(eq(dailyCheckins.id, checkin.id));
-    checkin = { ...checkin, targetCount };
+    const fullyCompleted = checkin.completedCount >= targetCount;
+    await database.update(dailyCheckins).set({ targetCount, fullyCompleted, updatedAt: now }).where(eq(dailyCheckins.id, checkin.id));
+    checkin = { ...checkin, targetCount, fullyCompleted };
   }
   const [weekStats] = await database
     .select({ assigned: count(userWords.id), mastered: sql<number>`sum(case when ${userWords.masteredAt} is not null then 1 else 0 end)` })
@@ -135,7 +137,8 @@ export async function getTodayData(userId: string, weeklyGoal: number) {
     date: today,
     weekStart: currentWeek,
     tasks: taskRows,
-    checkin: checkin ?? { completedCount: 0, targetCount, fullyCompleted: targetCount === 0 },
+    checkin: checkin ?? { completedCount: 0, targetCount, fullyCompleted: false },
+    plan: { weeklyGoal, dailyAverage: Math.ceil(weeklyGoal / 7) },
     week: { assigned: Number(weekStats?.assigned ?? 0), mastered: Number(weekStats?.mastered ?? 0), goal: weeklyGoal },
     activeDays,
     streak: calculateStreak(recentCheckins.map((entry) => entry.date), now),
@@ -206,7 +209,7 @@ async function updateDailyCheckin(userId: string, weeklyGoal: number) {
     .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, dayStart(now)), lte(reviewLogs.reviewedAt, new Date(dayStart(now).getTime() + DAY - 1))));
   const completedCount = Number(todayStats?.completed ?? 0);
   const [existing] = await database.select().from(dailyCheckins).where(and(eq(dailyCheckins.userId, userId), eq(dailyCheckins.date, today))).limit(1);
-  const targetCount = Math.max(1, existing?.targetCount ?? Math.min(weeklyGoal, Math.ceil(weeklyGoal / 7)));
+  const targetCount = Math.max(1, existing?.targetCount ?? Math.ceil(weeklyGoal / 7));
   await database.insert(dailyCheckins).values({
     userId,
     date: today,

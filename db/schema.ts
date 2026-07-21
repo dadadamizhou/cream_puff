@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -92,6 +92,68 @@ export const dailyCheckins = pgTable(
   (table) => [uniqueIndex("daily_checkins_user_date_idx").on(table.userId, table.date)],
 );
 
+export const dailyPracticeSessions = pgTable(
+  "daily_practice_sessions",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    status: text("status", { enum: ["in_progress", "completed"] }).notNull().default("in_progress"),
+    questionCount: integer("question_count").notNull().default(0),
+    answeredCount: integer("answered_count").notNull().default(0),
+    correctCount: integer("correct_count").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_practice_sessions_user_date_idx").on(table.userId, table.date),
+    index("daily_practice_sessions_user_status_idx").on(table.userId, table.status),
+  ],
+);
+
+export const practiceQuestions = pgTable(
+  "practice_questions",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => dailyPracticeSessions.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    wordId: integer("word_id")
+      .notNull()
+      .references(() => words.id, { onDelete: "cascade" }),
+    type: text("type", {
+      enum: [
+        "meaning_to_word",
+        "word_to_meaning",
+        "listening_choice",
+        "listening_dictation",
+        "translation_dictation",
+      ],
+    }).notNull(),
+    position: integer("position").notNull(),
+    prompt: text("prompt").notNull(),
+    audioText: text("audio_text"),
+    options: jsonb("options").$type<string[]>().notNull().default([]),
+    correctAnswer: text("correct_answer").notNull(),
+    selectedAnswer: text("selected_answer"),
+    isCorrect: boolean("is_correct"),
+    answeredAt: timestamp("answered_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("practice_questions_session_position_idx").on(table.sessionId, table.position),
+    index("practice_questions_user_session_idx").on(table.userId, table.sessionId),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type Word = typeof words.$inferSelect;
 export type UserWord = typeof userWords.$inferSelect;
+export type DailyPracticeSession = typeof dailyPracticeSessions.$inferSelect;
+export type PracticeQuestion = typeof practiceQuestions.$inferSelect;

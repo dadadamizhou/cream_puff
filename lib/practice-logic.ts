@@ -1,6 +1,13 @@
 import type { PracticeSummary, PracticeType } from "@/types/practice";
 
-export const DAILY_PRACTICE_QUESTION_COUNT = 15;
+/**
+ * Practice scales with the learned vocabulary instead of stopping at a fixed
+ * count. Small libraries use every available word/type pair once; larger
+ * libraries get at least two prompts per selected word, capped for fatigue.
+ */
+export const PREFERRED_MIN_PRACTICE_QUESTION_COUNT = 20;
+export const MAX_PRACTICE_QUESTION_COUNT = 50;
+export const MAX_PRACTICE_TARGET_COUNT = MAX_PRACTICE_QUESTION_COUNT / 2;
 
 export const PRACTICE_TYPES: PracticeType[] = [
   "meaning_to_word",
@@ -12,6 +19,15 @@ export const PRACTICE_TYPES: PracticeType[] = [
 
 export function normalizePracticeAnswer(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
+export function getPracticeQuestionCount(targetCount: number) {
+  if (targetCount <= 0) return 0;
+  const availableUniquePrompts = targetCount * PRACTICE_TYPES.length;
+  return Math.min(
+    MAX_PRACTICE_QUESTION_COUNT,
+    Math.max(Math.min(PREFERRED_MIN_PRACTICE_QUESTION_COUNT, availableUniquePrompts), targetCount * 2),
+  );
 }
 
 export function summarizePracticeQuestions(
@@ -32,12 +48,32 @@ export function summarizePracticeQuestions(
   };
 }
 
-export function createPracticePlan<T>(targets: T[], count = DAILY_PRACTICE_QUESTION_COUNT) {
+export function createPracticePlan<T>(targets: T[], count = getPracticeQuestionCount(targets.length)) {
   if (targets.length === 0 || count <= 0) return [];
 
-  return Array.from({ length: count }, (_, position) => ({
-    position,
-    type: PRACTICE_TYPES[position % PRACTICE_TYPES.length],
-    target: targets[position % targets.length],
-  }));
+  return Array.from({ length: count }, (_, position) => {
+    const targetIndex = position % targets.length;
+    const repetition = Math.floor(position / targets.length);
+    return {
+      position,
+      type: PRACTICE_TYPES[(targetIndex + repetition) % PRACTICE_TYPES.length],
+      target: targets[targetIndex],
+    };
+  });
+}
+
+export function createPracticePlanExtension<T extends { wordId: number }>(
+  targets: T[],
+  desiredCount: number,
+  existing: Array<{ position: number; wordId: number; type: PracticeType }>,
+) {
+  const remainingCount = Math.max(0, desiredCount - existing.length);
+  if (remainingCount === 0) return [];
+
+  const existingPairs = new Set(existing.map((item) => `${item.wordId}:${item.type}`));
+  const nextPosition = existing.reduce((highest, item) => Math.max(highest, item.position), -1) + 1;
+  return createPracticePlan(targets, desiredCount)
+    .filter((item) => !existingPairs.has(`${item.target.wordId}:${item.type}`))
+    .slice(0, remainingCount)
+    .map((item, index) => ({ ...item, position: nextPosition + index }));
 }

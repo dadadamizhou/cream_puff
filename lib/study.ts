@@ -6,6 +6,7 @@ import { dailyCheckins, dailyCheckinWords, reviewLogs, userWords, wordBookEntrie
 import type { Rating } from "@/lib/scheduler";
 import { resolveReviewSchedule } from "@/lib/review-scheduling";
 import { normalizeWordBooks, type WordBookId } from "@/lib/word-books";
+import { getAssignmentSeed } from "@/lib/assignment-selection";
 import {
   DAY_MS,
   getCumulativeWeeklyTarget,
@@ -52,6 +53,7 @@ function serializeStudyTask(task: StudyTaskRow): StudyTask {
 export async function ensureTodayAssignments(userId: string, weeklyGoal: number, enabledWordBooks: WordBookId[]) {
   const now = new Date();
   const currentWeek = getShanghaiWeekStart(now);
+  const normalizedWordBooks = normalizeWordBooks(enabledWordBooks);
 
   await database.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`study-assignments:${userId}`}))`);
@@ -61,7 +63,7 @@ export async function ensureTodayAssignments(userId: string, weeklyGoal: number,
       .where(and(eq(userWords.userId, userId), eq(userWords.assignedWeek, currentWeek)));
     let remaining = Math.max(0, getCumulativeWeeklyTarget(weeklyGoal, now) - Number(assignedThisWeek[0]?.value ?? 0));
 
-    for (const wordBook of normalizeWordBooks(enabledWordBooks)) {
+    for (const wordBook of normalizedWordBooks) {
       if (remaining <= 0) break;
       const candidates = await tx
         .select({ id: words.id })
@@ -71,9 +73,11 @@ export async function ensureTodayAssignments(userId: string, weeklyGoal: number,
           eq(wordBookEntries.wordBook, wordBook),
           sql`NOT EXISTS (SELECT 1 FROM user_words WHERE user_words.word_id = ${words.id} AND user_words.user_id = ${userId})`,
         ))
-        .orderBy(sql`random()`)
+        // Stable hashing prevents alphabetic bias while keeping retries idempotent.
+        .orderBy(sql`md5(${getAssignmentSeed(userId, currentWeek)} || ${words.id}::text)`, asc(words.id))
         .limit(remaining);
       if (!candidates.length) continue;
+
       const inserted = await tx.insert(userWords).values(
         candidates.map((word) => ({
           userId,
@@ -105,7 +109,11 @@ export async function getTodayData(userId: string, weeklyGoal: number, enabledWo
     .from(userWords)
     .innerJoin(words, eq(userWords.wordId, words.id))
     .where(and(eq(userWords.userId, userId), lte(userWords.nextReviewAt, now)))
-    .orderBy(asc(userWords.nextReviewAt), sql`random()`);
+    .orderBy(
+      asc(userWords.nextReviewAt),
+      sql`md5(${getAssignmentSeed(userId, today)} || ${userWords.wordId}::text)`,
+      asc(userWords.wordId),
+    );
 
   const completedRows = await database
     .select({ wordId: dailyCheckinWords.wordId })
@@ -263,7 +271,7 @@ export async function getOptionalStudy(args: {
           eq(wordBookEntries.wordBook, wordBook),
           sql`NOT EXISTS (SELECT 1 FROM user_words WHERE user_words.word_id = ${words.id} AND user_words.user_id = ${args.userId})`,
         ))
-        .orderBy(sql`random()`)
+        .orderBy(sql`md5(${getAssignmentSeed(args.userId, plan.weekStart)} || ${words.id}::text)`, asc(words.id))
         .limit(remaining);
       if (!candidates.length) continue;
 
@@ -291,7 +299,7 @@ export async function getOptionalStudy(args: {
       eq(userWords.reviewCount, 0),
       eq(userWords.nextReviewAt, plan.start),
     ))
-    .orderBy(sql`random()`);
+    .orderBy(sql`md5(${getAssignmentSeed(args.userId, plan.weekStart)} || ${userWords.wordId}::text)`, asc(userWords.wordId));
   const tasks = rows.map(serializeStudyTask);
   return {
     mode: "advance",

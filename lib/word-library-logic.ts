@@ -39,3 +39,8 @@ export function getWordProgressStatus(reviewCount: number | null, masteredAt: Da
 export function escapeLikePattern(value: string) {
   return value.replace(/[\\%_]/g, "\\$&");
 }
+
+export function clampWordLibraryPage(page: number, total: number, pageSize: number) {
+  const totalPages = Math.ceil(total / pageSize);
+  return Math.min(Math.max(1, page), Math.max(1, totalPages));
+}

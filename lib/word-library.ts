@@ -5,10 +5,10 @@ import { database } from "@/db";
 import { reviewLogs, userWords, wordBookEntries, words } from "@/db/schema";
 import type { WordLibraryData } from "@/types/word-library";
 import type { WordLibraryQuery } from "@/lib/validation/words";
-import { escapeLikePattern, getShanghaiDayRange, getShanghaiWeekStart, getWordProgressStatus } from "@/lib/word-library-logic";
+import { clampWordLibraryPage, escapeLikePattern, getShanghaiDayRange, getShanghaiWeekStart, getWordProgressStatus } from "@/lib/word-library-logic";
 import { WORD_BOOK_IDS, type WordBookId } from "@/lib/word-books";
 
-function getStatusCondition(status: WordLibraryQuery["status"]): SQL | undefined {
+function getStatusCondition(status: WordLibraryQuery["status"], currentWeek: string): SQL | undefined {
   switch (status) {
     case "learned":
       return gt(userWords.reviewCount, 0);
@@ -19,7 +19,7 @@ function getStatusCondition(status: WordLibraryQuery["status"]): SQL | undefined
     case "unlearned":
       return sql`coalesce(${userWords.reviewCount}, 0) = 0`;
     case "scheduled":
-      return isNotNull(userWords.id);
+      return eq(userWords.assignedWeek, currentWeek);
     default:
       return undefined;
   }
@@ -54,9 +54,9 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
     .from(wordBookEntries)
     .where(eq(wordBookEntries.wordBook, query.book));
   const bookCondition = bookWordIds ? inArray(words.id, bookWordIds) : undefined;
-  const listCondition = and(searchCondition, bookCondition, scopeCondition, getStatusCondition(query.status));
+  const listCondition = and(searchCondition, bookCondition, scopeCondition, getStatusCondition(query.status, currentWeek));
 
-  const [summaryRows, totalRows, itemRows] = await Promise.all([
+  const [summaryRows, totalRows] = await Promise.all([
     database
       .select({
         total: count(words.id),
@@ -74,28 +74,30 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
       .from(words)
       .leftJoin(userWords, currentUserJoin)
       .where(listCondition),
-    database
-      .select({
-        id: words.id,
-        spelling: words.spelling,
-        phonetic: words.phonetic,
-        definition: words.definition,
-        wordBook: words.wordBook,
-        stage: userWords.stage,
-        reviewCount: userWords.reviewCount,
-        assignedWeek: userWords.assignedWeek,
-        masteredAt: userWords.masteredAt,
-      })
-      .from(words)
-      .leftJoin(userWords, currentUserJoin)
-      .where(listCondition)
-      .orderBy(asc(words.position), asc(words.id))
-      .limit(query.pageSize)
-      .offset((query.page - 1) * query.pageSize),
   ]);
 
   const summary = summaryRows[0];
   const total = Number(totalRows[0]?.value ?? 0);
+  const totalPages = Math.ceil(total / query.pageSize);
+  const page = clampWordLibraryPage(query.page, total, query.pageSize);
+  const itemRows = await database
+    .select({
+      id: words.id,
+      spelling: words.spelling,
+      phonetic: words.phonetic,
+      definition: words.definition,
+      wordBook: words.wordBook,
+      stage: userWords.stage,
+      reviewCount: userWords.reviewCount,
+      assignedWeek: userWords.assignedWeek,
+      masteredAt: userWords.masteredAt,
+    })
+    .from(words)
+    .leftJoin(userWords, currentUserJoin)
+    .where(listCondition)
+    .orderBy(asc(words.position), asc(words.id))
+    .limit(query.pageSize)
+    .offset((page - 1) * query.pageSize);
   const membershipRows = itemRows.length ? await database
     .select({ wordId: wordBookEntries.wordId, wordBook: wordBookEntries.wordBook })
     .from(wordBookEntries)
@@ -136,10 +138,10 @@ export async function getWordLibrary(userId: string, query: WordLibraryQuery): P
       date: query.scope === "day" ? (query.date ?? null) : null,
     },
     pagination: {
-      page: query.page,
+      page,
       pageSize: query.pageSize,
       total,
-      totalPages: Math.ceil(total / query.pageSize),
+      totalPages,
     },
   };
 }

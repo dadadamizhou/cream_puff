@@ -4,8 +4,9 @@ import { and, asc, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { database } from "@/db";
 import { dailyPracticeSessions, practiceQuestions, userWords, words } from "@/db/schema";
 import {
-  createPracticePlan,
-  DAILY_PRACTICE_QUESTION_COUNT,
+  createPracticePlanExtension,
+  getPracticeQuestionCount,
+  MAX_PRACTICE_TARGET_COUNT,
   normalizePracticeAnswer,
   summarizePracticeQuestions,
 } from "@/lib/practice-logic";
@@ -104,12 +105,13 @@ async function loadQuestions(sessionId: number, userId: string) {
     .orderBy(asc(practiceQuestions.position));
 }
 
-async function ensurePracticeQuestions(sessionId: number, userId: string) {
-  const [existing] = await database
-    .select({ value: count() })
+async function ensurePracticeQuestions(sessionId: number, userId: string, sessionCompleted: boolean) {
+  const existingRows = await database
+    .select({ position: practiceQuestions.position, wordId: practiceQuestions.wordId, type: practiceQuestions.type })
     .from(practiceQuestions)
     .where(and(eq(practiceQuestions.sessionId, sessionId), eq(practiceQuestions.userId, userId)));
-  if (Number(existing?.value ?? 0) >= DAILY_PRACTICE_QUESTION_COUNT) return;
+  const existingCount = existingRows.length;
+  if (sessionCompleted && existingCount > 0) return;
 
   const targets = await database
     .select({
@@ -120,10 +122,12 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
     .from(userWords)
     .innerJoin(words, eq(userWords.wordId, words.id))
     .where(and(eq(userWords.userId, userId), gt(userWords.reviewCount, 0)))
-    .orderBy(desc(userWords.lapseCount), asc(userWords.nextReviewAt), asc(words.position))
-    .limit(DAILY_PRACTICE_QUESTION_COUNT);
+    .orderBy(desc(userWords.lapseCount), asc(userWords.nextReviewAt), sql`random()`)
+    .limit(MAX_PRACTICE_TARGET_COUNT);
 
   if (targets.length === 0) throw new Error("NO_WORDS_AVAILABLE");
+  const desiredQuestionCount = getPracticeQuestionCount(targets.length);
+  if (existingCount >= desiredQuestionCount) return;
 
   const distractors = await database
     .select({ spelling: words.spelling, definition: words.definition })
@@ -135,7 +139,11 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
   const now = new Date();
   const generated: (typeof practiceQuestions.$inferInsert)[] = [];
 
-  for (const { position, target, type } of createPracticePlan(targets)) {
+  for (const { position, target, type } of createPracticePlanExtension(
+    targets,
+    desiredQuestionCount,
+    existingRows,
+  )) {
     const base = {
       sessionId,
       userId,
@@ -184,10 +192,12 @@ async function ensurePracticeQuestions(sessionId: number, userId: string) {
     }
   }
 
-  await database
-    .insert(practiceQuestions)
-    .values(generated)
-    .onConflictDoNothing({ target: [practiceQuestions.sessionId, practiceQuestions.position] });
+  if (generated.length > 0) {
+    await database
+      .insert(practiceQuestions)
+      .values(generated)
+      .onConflictDoNothing({ target: [practiceQuestions.sessionId, practiceQuestions.position] });
+  }
 
   const [actual] = await database
     .select({ value: count() })
@@ -215,7 +225,7 @@ export async function getTodayPractice(userId: string): Promise<PracticeTodayDat
         userId,
         date: today,
         status: "in_progress",
-        questionCount: DAILY_PRACTICE_QUESTION_COUNT,
+        questionCount: 0,
         answeredCount: 0,
         correctCount: 0,
         startedAt: now,
@@ -234,7 +244,7 @@ export async function getTodayPractice(userId: string): Promise<PracticeTodayDat
   }
 
   if (!session) throw new Error("PRACTICE_CREATE_FAILED");
-  await ensurePracticeQuestions(session.id, userId);
+  await ensurePracticeQuestions(session.id, userId, session.status === "completed");
   const rows = await loadQuestions(session.id, userId);
   const questions = rows.map(toPublicQuestion);
   const summary = summarizePracticeQuestions(rows);

@@ -1,17 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
   createPracticePlan,
+  createPracticePlanExtension,
+  getPracticeQuestionCount,
   normalizePracticeAnswer,
+  PRACTICE_TYPES,
   summarizePracticeQuestions,
 } from "../lib/practice-logic";
 import { describePracticeError } from "../lib/practice-errors";
 
 describe("daily practice plan", () => {
-  it("builds all 15 questions even when only one learned word is available", () => {
+  it.each([
+    [1, 5],
+    [2, 10],
+    [5, 20],
+    [10, 20],
+  ])("scales to %i learned words with %i bounded questions", (targetCount, expectedCount) => {
+    const learnedWords = Array.from({ length: targetCount }, (_, id) => ({ id, spelling: `word-${id}` }));
+    const plan = createPracticePlan(learnedWords);
+
+    expect(plan).toHaveLength(expectedCount);
+    expect(new Set(plan.map((item) => `${item.target.id}:${item.type}`)).size).toBe(expectedCount);
+    const typeCounts = PRACTICE_TYPES.map((type) => plan.filter((item) => item.type === type).length);
+    expect(Math.max(...typeCounts) - Math.min(...typeCounts)).toBeLessThanOrEqual(1);
+  });
+
+  it("does not repeat one question type for a target before cycling", () => {
     const learnedWord = { id: 7, spelling: "abandon" };
     const plan = createPracticePlan([learnedWord]);
 
-    expect(plan).toHaveLength(15);
+    expect(plan).toHaveLength(5);
     expect(plan.every((item) => item.target === learnedWord)).toBe(true);
     expect(new Set(plan.map((item) => item.type)).size).toBe(5);
   });
@@ -21,8 +39,32 @@ describe("daily practice plan", () => {
     const learnedIds = new Set(learnedWords.map((word) => word.id));
     const plan = createPracticePlan(learnedWords);
 
-    expect(plan).toHaveLength(15);
+    expect(plan).toHaveLength(10);
     expect(plan.every((item) => learnedIds.has(item.target.id))).toBe(true);
+  });
+
+  it.each([
+    [0, 0],
+    [1, 5],
+    [3, 15],
+    [4, 20],
+    [25, 50],
+  ])("computes a bounded question count for %i targets", (targetCount, expectedCount) => {
+    expect(getPracticeQuestionCount(targetCount)).toBe(expectedCount);
+  });
+
+  it("extends an old unfinished session without reusing word/type pairs or positions", () => {
+    const targets = Array.from({ length: 5 }, (_, wordId) => ({ wordId }));
+    const existing = Array.from({ length: 15 }, (_, position) => ({
+      position,
+      wordId: position % targets.length,
+      type: PRACTICE_TYPES[position % PRACTICE_TYPES.length],
+    }));
+    const extension = createPracticePlanExtension(targets, 20, existing);
+
+    expect(extension).toHaveLength(5);
+    expect(extension.map((item) => item.position)).toEqual([15, 16, 17, 18, 19]);
+    expect(extension.every((item) => !existing.some((old) => old.wordId === item.target.wordId && old.type === item.type))).toBe(true);
   });
 });
 

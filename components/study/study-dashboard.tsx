@@ -133,7 +133,7 @@ export function StudyDashboard() {
         </button>
       </div>
 
-      <LearningRoute reviewCount={reviews.length} newCount={newWords.length} batchCount={newBatches} practiceCount={practiceData?.summary.remaining ?? 15} currentBookLabel={currentBook?.label} />
+      <LearningRoute reviewCount={reviews.length} newCount={newWords.length} batchCount={newBatches} practiceCount={practiceData?.summary.remaining ?? null} currentBookLabel={currentBook?.label} />
 
     </section>
 
@@ -144,7 +144,7 @@ export function StudyDashboard() {
     <Link href="/practice" className="mt-5 flex items-center gap-4 border-y border-line py-4 transition active:opacity-70">
       <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"><Brain className="size-5" /></div>
       <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="text-sm font-bold">全量混合巩固</p>{practiceData?.summary.completed && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">已完成</span>}</div><p className="mt-1 text-xs text-muted">{practiceLocked ? "完成主流程后解锁" : "从全部已学词中混合听音、辨义与默写"}</p></div>
-      <div className="text-right">{practiceLocked ? <span className="text-xs text-muted">未解锁</span> : <><strong className="text-sm text-emerald-700">{practiceData?.summary.remaining ?? 15}</strong><span className="block text-[10px] text-muted">题</span></>}</div>
+      <div className="text-right">{practiceLocked ? <span className="text-xs text-muted">未解锁</span> : <><strong className="text-sm text-emerald-700">{practiceData?.summary.remaining ?? "--"}</strong><span className="block text-[10px] text-muted">题</span></>}</div>
     </Link>
 
     <section className="mt-5">
@@ -155,12 +155,12 @@ export function StudyDashboard() {
   </div>;
 }
 
-function LearningRoute({ reviewCount, newCount, batchCount, practiceCount, currentBookLabel }: { reviewCount: number; newCount: number; batchCount: number; practiceCount: number; currentBookLabel?: string }) {
+function LearningRoute({ reviewCount, newCount, batchCount, practiceCount, currentBookLabel }: { reviewCount: number; newCount: number; batchCount: number; practiceCount: number | null; currentBookLabel?: string }) {
   const steps = [
     { icon: RotateCcw, title: "到期唤醒", detail: reviewCount ? `${reviewCount} 个旧词 · 先回忆再看答案` : "今天没有到期旧词", tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" },
     { icon: Headphones, title: "新词建联", detail: newCount ? `${currentBookLabel ? `${currentBookLabel} · ` : ""}${newCount} 个随机新词` : "今天的新词已经学完", tone: "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300" },
     { icon: Keyboard, title: "分批回测", detail: newCount ? `${batchCount} 组 · 每 5 词立即默写` : "随新词学习自动完成", tone: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" },
-    { icon: Brain, title: "全量巩固", detail: `${practiceCount} 题 · 全部已学词混合练习`, tone: "bg-brand-soft text-brand" },
+    { icon: Brain, title: "全量巩固", detail: practiceCount === null ? "按已学词量动态安排" : `${practiceCount} 题 · 全部已学词混合练习`, tone: "bg-brand-soft text-brand" },
   ];
   return <ol className="px-5 py-2">{steps.map((step, index) => <li key={step.title} className="relative flex gap-3 py-3.5">{index < steps.length - 1 && <span className="absolute bottom-[-0.875rem] left-4 top-11 w-px bg-line" />}<span className={cn("relative z-10 grid size-8 shrink-0 place-items-center rounded-full", step.tone)}><step.icon className="size-4" /></span><div className="min-w-0"><p className="text-sm font-bold">{step.title}</p><p className="mt-1 text-xs text-muted">{step.detail}</p></div></li>)}</ol>;
 }
